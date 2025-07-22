@@ -1,61 +1,72 @@
 # 文件路径: .github/workflows/daily-step-runner.yml
 
-name: Daily Step Runner with Notification
+name: Multi-Time Daily Step Runner
 
 # 触发器配置
 on:
-  # 1. 定时触发：使用cron语法
-  # '30 0 * * *' 代表 UTC 时间的 00:30，即北京时间 (UTC+8) 的 08:30。
+  # 1. 设置多个定时触发器，避开整点
   schedule:
+    # 任务一：北京时间 早上 8:46 (00:46 UTC)
     - cron: '46 0 * * *'
+    # 任务二：北京时间 下午 14:46 (06:46 UTC)
+    - cron: '46 6 * * *'
   
-  # 2. 手动触发：允许你在GitHub Actions页面手动运行此工作流
+  # 2. 保留手动触发功能，方便测试
   workflow_dispatch:
 
 jobs:
-  # 定义一个名为 run-and-notify 的任务
   run-and-notify:
-    # 使用GitHub提供的最新版Ubuntu虚拟机作为运行环境
     runs-on: ubuntu-latest
 
-    # 定义任务中的步骤
     steps:
-      # 步骤1：运行主脚本并发送通知
       - name: Run Job and Send PushPlus Notification
         run: |
-          # --- 用户配置区：设置步数范围 ---
-          MIN_STEPS=20000
-          MAX_STEPS=28000
-
           # --- 核心脚本区 ---
-          # 1. 在范围内生成一个随机步数
-          RANDOM_STEPS=$((RANDOM % (MAX_STEPS - MIN_STEPS + 1) + MIN_STEPS))
-          echo "Generated random steps: $RANDOM_STEPS"
+          # 1. 获取当前的UTC小时 (0-23)
+          CURRENT_HOUR_UTC=$(date -u +'%H')
+          echo "Current UTC hour is: $CURRENT_HOUR_UTC. This will determine the step range."
 
-          # 2. 使用 curl 发送刷步请求并捕获服务器响应
-          # 新增: -H "Referer: ..." 和 -A "..." 来模拟浏览器请求头
+          # 2. 根据UTC时间判断是哪个任务，并设置对应的步数范围和任务名
+          #    我们用一个宽松的范围（< 3）来判断早间任务，以防任务启动有延迟
+          if (( CURRENT_HOUR_UTC < 3 )); then
+            # 这是早间任务 (00:xx UTC)
+            RUN_TYPE="清晨"
+            MIN_STEPS=1000
+            MAX_STEPS=9999
+            echo "Morning schedule detected. Step range: $MIN_STEPS - $MAX_STEPS."
+          else
+            # 这是午后任务 (06:xx UTC)
+            RUN_TYPE="午后"
+            MIN_STEPS=20000
+            MAX_STEPS=30000
+            echo "Afternoon schedule detected. Step range: $MIN_STEPS - $MAX_STEPS."
+          fi
+          
+          # 手动运行时，也会根据当前时间自动选择一个范围
+
+          # 3. 在选定的范围内生成随机步数
+          RANDOM_STEPS=$((RANDOM % (MAX_STEPS - MIN_STEPS + 1) + MIN_STEPS))
+          echo "Final steps to submit: $RANDOM_STEPS"
+
+          # 4. 使用 curl 发送刷步请求并捕获服务器响应
           API_URL="http://api3.jlwz.cn/bs_2021.php"
           RESPONSE=$(curl -sS --connect-timeout 15 \
             -H "Referer: https://3g.gljlw.com/" \
             -A "Mozilla/5.0 (iPhone; CPU iPhone OS 15_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Mobile/15E148 Safari/604.1" \
             "${API_URL}?mobile=${{ secrets.USER_EMAIL }}&psw=${{ secrets.USER_PASSWORD }}&step=$RANDOM_STEPS&type=2")
           
-          # 在日志中打印服务器的原始响应，方便调试
           echo "Server Response: $RESPONSE"
 
-          # 3. 根据服务器响应结果，准备不同的推送内容
-          # 检查响应中是否包含成功的关键代码 "code":"1"
+          # 5. 根据服务器响应结果，准备不同的推送内容
           if [[ "$RESPONSE" == *'"code":"1"'* ]]; then
-            TITLE="✅ 刷步成功-$(date +'%Y-%m-%d')"
-            # 使用 Markdown 格式化消息内容，使其在微信上更美观
-            CONTENT="### 🎉 刷步任务执行成功！\n\n- **提交步数**: **$RANDOM_STEPS** 步\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
+            TITLE="✅ $RUN_TYPE 刷步成功-$(date +'%Y-%m-%d')"
+            CONTENT="### 🎉 $RUN_TYPE 刷步任务执行成功！\n\n- **提交步数**: **$RANDOM_STEPS** 步\n\n- **任务范围**: $MIN_STEPS - $MAX_STEPS\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
           else
-            TITLE="❌ 刷步失败-$(date +'%Y-%m-%d')"
-            CONTENT="### ⚠️ 刷步任务执行失败！\n\n请登录 GitHub Actions 查看详细日志。\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
+            TITLE="❌ $RUN_TYPE 刷步失败-$(date +'%Y-%m-%d')"
+            CONTENT="### ⚠️ $RUN_TYPE 刷步任务执行失败！\n\n请登录 GitHub Actions 查看详细日志。\n\n- **尝试步数**: $RANDOM_STEPS\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
           fi
 
-          # 4. 调用 PushPlus API 发送通知
-          # 使用 -d 参数通过POST方式发送数据，可以更好地处理内容中的特殊字符
+          # 6. 调用 PushPlus API 发送通知
           curl -sS --connect-timeout 15 \
             -X POST "http://www.pushplus.plus/send" \
             -d "token=${{ secrets.PUSHPLUS_TOKEN }}" \
