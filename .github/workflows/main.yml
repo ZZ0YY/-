@@ -33,10 +33,12 @@ jobs:
           echo "Generated random steps: $RANDOM_STEPS"
 
           # 2. 使用 curl 发送刷步请求并捕获服务器响应
-          # -sS: 静默模式，但仍然显示错误信息
-          # --connect-timeout 15: 设置15秒的连接超时，防止任务卡死
+          # 新增: -H "Referer: ..." 和 -A "..." 来模拟浏览器请求头
           API_URL="http://api3.jlwz.cn/bs_2021.php"
-          RESPONSE=$(curl -sS --connect-timeout 15 "${API_URL}?mobile=${{ secrets.USER_EMAIL }}&psw=${{ secrets.USER_PASSWORD }}&step=$RANDOM_STEPS&type=2")
+          RESPONSE=$(curl -sS --connect-timeout 15 \
+            -H "Referer: https://3g.gljlw.com/" \
+            -A "Mozilla/5.0 (iPhone; CPU iPhone OS 15_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Mobile/15E148 Safari/604.1" \
+            "${API_URL}?mobile=${{ secrets.USER_EMAIL }}&psw=${{ secrets.USER_PASSWORD }}&step=$RANDOM_STEPS&type=2")
           
           # 在日志中打印服务器的原始响应，方便调试
           echo "Server Response: $RESPONSE"
