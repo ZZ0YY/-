@@ -7,7 +7,7 @@ on:
   # 1. 定时触发：使用cron语法
   # '30 0 * * *' 代表 UTC 时间的 00:30，即北京时间 (UTC+8) 的 08:30。
   schedule:
-    - cron: '30 0 * * *'
+    - cron: '46 0 * * *'
   
   # 2. 手动触发：允许你在GitHub Actions页面手动运行此工作流
   workflow_dispatch:
