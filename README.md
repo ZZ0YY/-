@@ -55,27 +55,44 @@
 
 ---
 
+---
 ### 自定义配置
 
-你可以直接编辑 `.github/workflows/daily-step-runner.yml` 文件来自定义一些参数。
+你可以直接编辑 `.github/workflows/daily-step-runner.yml` 文件来自定义运行时间和步数范围。
 
 #### 1. 修改执行时间
 
-默认是北京时间每天 `08:30` 执行。你可以修改 `cron` 表达式。
+脚本默认在北京时间 **早上8点** 和 **下午2点** 各运行一次。`cron` 语法基于 UTC 时间，北京时间(CST) = UTC+8。
+
+-   **早上 8:00 (CST)** 对应 `00:00 (UTC)`
+-   **下午 14:00 (CST)** 对应 `06:00 (UTC)`
+
+你可以修改 `on.schedule` 部分的 `cron` 表达式来改变执行时间：
 
 ```yaml
-# 在 on.schedule.cron
-# '30 0 * * *' 代表 UTC 时间的 00:30，即北京时间 08:30
 schedule:
-  - cron: '30 0 * * *' 
-```
+  # 任务一：北京时间 早上 8:00
+  - cron: '0 0 * * *'
+  # 任务二：北京时间 下午 14:00
+  - cron: '0 6 * * *'```
 
 #### 2. 修改步数范围
 
-直接修改文件中的 `MIN_STEPS` 和 `MAX_STEPS` 的值即可。
+脚本会根据当前的运行时间自动选择步数范围。你可以在脚本的 `run` 部分修改 `if/else` 逻辑块中的 `MIN_STEPS` 和 `MAX_STEPS` 值。
 
-```yaml
-# 在 jobs.run-and-notify.steps.run
-MIN_STEPS=20000
-MAX_STEPS=28000
+```bash
+# 在 jobs.run-and-notify.steps.run 下找到此逻辑块
+
+# ...
+if (( CURRENT_HOUR_UTC < 3 )); then
+  # 这是早间任务的配置
+  RUN_TYPE="清晨"
+  MIN_STEPS=1000
+  MAX_STEPS=9999
+else
+  # 这是午后任务的配置
+  RUN_TYPE="午后"
+  MIN_STEPS=20000
+  MAX_STEPS=30000
+fi
 ```
