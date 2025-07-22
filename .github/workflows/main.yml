@@ -1,0 +1,62 @@
+# 文件路径: .github/workflows/daily-step-runner.yml
+
+name: Daily Step Runner with Notification
+
+# 触发器配置
+on:
+  # 1. 定时触发：使用cron语法
+  # '30 0 * * *' 代表 UTC 时间的 00:30，即北京时间 (UTC+8) 的 08:30。
+  schedule:
+    - cron: '30 0 * * *'
+  
+  # 2. 手动触发：允许你在GitHub Actions页面手动运行此工作流
+  workflow_dispatch:
+
+jobs:
+  # 定义一个名为 run-and-notify 的任务
+  run-and-notify:
+    # 使用GitHub提供的最新版Ubuntu虚拟机作为运行环境
+    runs-on: ubuntu-latest
+
+    # 定义任务中的步骤
+    steps:
+      # 步骤1：运行主脚本并发送通知
+      - name: Run Job and Send PushPlus Notification
+        run: |
+          # --- 用户配置区：设置步数范围 ---
+          MIN_STEPS=20000
+          MAX_STEPS=28000
+
+          # --- 核心脚本区 ---
+          # 1. 在范围内生成一个随机步数
+          RANDOM_STEPS=$((RANDOM % (MAX_STEPS - MIN_STEPS + 1) + MIN_STEPS))
+          echo "Generated random steps: $RANDOM_STEPS"
+
+          # 2. 使用 curl 发送刷步请求并捕获服务器响应
+          # -sS: 静默模式，但仍然显示错误信息
+          # --connect-timeout 15: 设置15秒的连接超时，防止任务卡死
+          API_URL="http://api3.jlwz.cn/bs_2021.php"
+          RESPONSE=$(curl -sS --connect-timeout 15 "${API_URL}?mobile=${{ secrets.USER_EMAIL }}&psw=${{ secrets.USER_PASSWORD }}&step=$RANDOM_STEPS&type=2")
+          
+          # 在日志中打印服务器的原始响应，方便调试
+          echo "Server Response: $RESPONSE"
+
+          # 3. 根据服务器响应结果，准备不同的推送内容
+          # 检查响应中是否包含成功的关键代码 "code":"1"
+          if [[ "$RESPONSE" == *'"code":"1"'* ]]; then
+            TITLE="✅ 刷步成功-$(date +'%Y-%m-%d')"
+            # 使用 Markdown 格式化消息内容，使其在微信上更美观
+            CONTENT="### 🎉 刷步任务执行成功！\n\n- **提交步数**: **$RANDOM_STEPS** 步\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
+          else
+            TITLE="❌ 刷步失败-$(date +'%Y-%m-%d')"
+            CONTENT="### ⚠️ 刷步任务执行失败！\n\n请登录 GitHub Actions 查看详细日志。\n\n- **服务器响应**: \`$RESPONSE\`\n\n- **执行时间**: $(date -u +'%Y-%m-%d %H:%M:%S') (UTC)"
+          fi
+
+          # 4. 调用 PushPlus API 发送通知
+          # 使用 -d 参数通过POST方式发送数据，可以更好地处理内容中的特殊字符
+          curl -sS --connect-timeout 15 \
+            -X POST "http://www.pushplus.plus/send" \
+            -d "token=${{ secrets.PUSHPLUS_TOKEN }}" \
+            -d "title=$TITLE" \
+            -d "content=$CONTENT" \
+            -d "template=markdown"
